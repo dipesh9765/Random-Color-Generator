@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Game</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s ease;
+    }
+
+    #timer-bar {
+      position: relative;
+      height: 4.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      overflow: hidden;
+    }
+
+    #timer-progress {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.22);
+      transform-origin: left center;
+      transition: transform 1s linear;
+    }
+
+    #timer-label {
+      position: relative;
+      z-index: 1;
+      color: #fff;
+      font-size: clamp(1.75rem, 5vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      user-select: none;
+    }
+
+    #timer-label.times-up {
+      font-size: clamp(1.25rem, 4vw, 1.75rem);
+      opacity: 0.85;
+    }
+
+    #game-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    #color-word {
+      font-size: clamp(3rem, 12vw, 8rem);
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-align: center;
+      line-height: 1.1;
+      user-select: none;
+      transition: opacity 0.2s ease, color 0.2s ease;
+    }
+
+    #color-word.fade-out {
+      opacity: 0;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+    }
+
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      min-width: 7rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: #fff;
+      color: #222;
+      transition: opacity 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      min-width: 5rem;
+      font-size: 0.875rem;
+      padding: 0.6rem 1rem;
+    }
+
+    #round-label {
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 500;
+      min-width: 7rem;
+      text-align: center;
+    }
+
+    @media (max-width: 480px) {
+      #controls {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .btn {
+        min-width: 5.5rem;
+        padding: 0.65rem 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="timer-bar" aria-live="polite">
+    <div id="timer-progress"></div>
+    <span id="timer-label">3</span>
+  </div>
+
+  <div id="game-area">
+    <div id="color-word" aria-live="polite"></div>
+  </div>
+
+  <div id="controls">
+    <button type="button" class="btn" id="btn-prev" disabled>Previous</button>
+    <span id="round-label">Round 1 of 20</span>
+    <button type="button" class="btn" id="btn-next">Next</button>
+    <button type="button" class="btn btn-secondary" id="btn-new-set" title="Shuffle a new set of rounds">New set</button>
+  </div>
+
+  <script>
+    const COLORS = [
+      { name: 'RED', hex: '#e53935' },
+      { name: 'GREEN', hex: '#43a047' },
+      { name: 'BLUE', hex: '#1e88e5' },
+      { name: 'YELLOW', hex: '#fdd835' },
+      { name: 'ORANGE', hex: '#fb8c00' },
+      { name: 'PURPLE', hex: '#8e24aa' },
+      { name: 'PINK', hex: '#ec407a' },
+      { name: 'BLACK', hex: '#212121' },
+      { name: 'WHITE', hex: '#fafafa' }
+    ];
+
+    const ROUND_COUNT = 20;
+    const MIN_CONTRAST = 3;
+    const GUESS_TIME = 1;
+
+    const colorWord = document.getElementById('color-word');
+    const timerLabel = document.getElementById('timer-label');
+    const timerProgress = document.getElementById('timer-progress');
+    const roundLabel = document.getElementById('round-label');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const btnNewSet = document.getElementById('btn-new-set');
+
+    let rounds = [];
+    let currentIndex = 0;
+    let timerInterval = null;
+    let audioContext = null;
+
+    function getAudioContext() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      return audioContext;
+    }
+
+    function unlockAudio() {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+    }
+
+    function playTimerEndSound() {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, now);
+      oscillator.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.35, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.35);
+    }
+
+    function hexToRgb(hex) {
+      const n = parseInt(hex.slice(1), 16);
+      return {
+        r: (n >> 16) & 255,
+        g: (n >> 8) & 255,
+        b: n & 255
+      };
+    }
+
+    function relativeLuminance(hex) {
+      const { r, g, b } = hexToRgb(hex);
+      const channel = (c) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    }
+
+    function contrastRatio(hex1, hex2) {
+      const l1 = relativeLuminance(hex1);
+      const l2 = relativeLuminance(hex2);
+      const lighter = Math.max(l1, l2);
+      const darker = Math.min(l1, l2);
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    function randomItem(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function shuffle(arr) {
+      const copy = arr.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function createRound() {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const bg = randomItem(COLORS);
+        const candidates = shuffle(COLORS.filter((c) => c.name !== bg.name));
+
+        for (const text of candidates) {
+          if (contrastRatio(bg.hex, text.hex) >= MIN_CONTRAST) {
+            return { background: bg.hex, word: text.name, ink: text.hex, bgLuminance: relativeLuminance(bg.hex) };
+          }
+        }
+      }
+
+      let best = null;
+      let bestRatio = 0;
+      for (const bg of COLORS) {
+        for (const text of COLORS) {
+          if (bg.name === text.name) continue;
+          const ratio = contrastRatio(bg.hex, text.hex);
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            best = { background: bg.hex, word: text.name, ink: text.hex, bgLuminance: relativeLuminance(bg.hex) };
+          }
+        }
+      }
+      return best;
+    }
+
+    function pairKey(round) {
+      return round.background + '|' + round.word;
+    }
+
+    function generateRounds(count) {
+      const result = [];
+      const used = new Set();
+      let safety = 0;
+
+      while (result.length < count && safety < count * 50) {
+        safety++;
+        const round = createRound();
+        const key = pairKey(round);
+        if (!used.has(key)) {
+          used.add(key);
+          result.push(round);
+        }
+      }
+
+      while (result.length < count) {
+        result.push(createRound());
+      }
+
+      return result;
+    }
+
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function updateTimerProgress(secondsLeft) {
+      timerProgress.style.transition = 'none';
+      timerProgress.style.transform = 'scaleX(' + (secondsLeft / GUESS_TIME) + ')';
+      timerProgress.offsetWidth;
+      timerProgress.style.transition = 'transform 1s linear';
+      timerProgress.style.transform = 'scaleX(' + ((secondsLeft - 1) / GUESS_TIME) + ')';
+    }
+
+    function startTimer() {
+      stopTimer();
+      let secondsLeft = GUESS_TIME;
+      timerLabel.textContent = String(secondsLeft);
+      timerLabel.classList.remove('times-up');
+      updateTimerProgress(secondsLeft);
+
+      timerInterval = setInterval(function () {
+        secondsLeft -= 1;
+        if (secondsLeft > 0) {
+          timerLabel.textContent = String(secondsLeft);
+          updateTimerProgress(secondsLeft);
+        } else {
+          stopTimer();
+          timerLabel.textContent = "Time's up!";
+          timerLabel.classList.add('times-up');
+          timerProgress.style.transition = 'transform 0.2s linear';
+          timerProgress.style.transform = 'scaleX(0)';
+          playTimerEndSound();
+        }
+      }, 1000);
+    }
+
+    function applyTextStroke(bgLuminance) {
+      const lightBg = bgLuminance > 0.5;
+      if (lightBg) {
+        colorWord.style.webkitTextStroke = '2px rgba(0, 0, 0, 0.35)';
+        colorWord.style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.25)';
+      } else {
+        colorWord.style.webkitTextStroke = '2px rgba(255, 255, 255, 0.3)';
+        colorWord.style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.4)';
+      }
+    }
+
+    function showRound(index, animate) {
+      const round = rounds[index];
+
+      function render() {
+        document.body.style.backgroundColor = round.background;
+        colorWord.textContent = round.word;
+        colorWord.style.color = round.ink;
+        applyTextStroke(round.bgLuminance);
+        colorWord.classList.remove('fade-out');
+        roundLabel.textContent = 'Round ' + (index + 1) + ' of ' + rounds.length;
+        btnPrev.disabled = index === 0;
+        btnNext.disabled = index === rounds.length - 1;
+        startTimer();
+      }
+
+      stopTimer();
+      if (animate) {
+        colorWord.classList.add('fade-out');
+        setTimeout(render, 200);
+      } else {
+        render();
+      }
+    }
+
+    function goTo(index) {
+      if (index < 0 || index >= rounds.length) return;
+      currentIndex = index;
+      showRound(currentIndex, true);
+    }
+
+    function startNewSet() {
+      stopTimer();
+      rounds = generateRounds(ROUND_COUNT);
+      currentIndex = 0;
+      showRound(0, false);
+    }
+
+    btnPrev.addEventListener('click', () => { unlockAudio(); goTo(currentIndex - 1); });
+    btnNext.addEventListener('click', () => { unlockAudio(); goTo(currentIndex + 1); });
+    btnNewSet.addEventListener('click', () => { unlockAudio(); startNewSet(); });
+
+    document.addEventListener('keydown', (e) => {
+      unlockAudio();
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        if (!btnNext.disabled) goTo(currentIndex + 1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (!btnPrev.disabled) goTo(currentIndex - 1);
+      }
+    });
+
+    startNewSet();
+  </script>
+</body>
+</html>
