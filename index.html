@@ -65,9 +65,21 @@
     #game-area {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 1.5rem;
       padding: 1rem;
+    }
+
+    #game-rule {
+      color: rgba(255, 255, 255, 0.92);
+      font-size: clamp(1rem, 3vw, 1.35rem);
+      font-weight: 600;
+      text-align: center;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      user-select: none;
+      max-width: 90%;
     }
 
     #color-word {
@@ -157,6 +169,7 @@
   </div>
 
   <div id="game-area">
+    <p id="game-rule">Shout the color of the letters — not what the word says!</p>
     <div id="color-word" aria-live="polite"></div>
   </div>
 
@@ -279,9 +292,15 @@
         const bg = randomItem(COLORS);
         const candidates = shuffle(COLORS.filter((c) => c.name !== bg.name));
 
-        for (const text of candidates) {
-          if (contrastRatio(bg.hex, text.hex) >= MIN_CONTRAST) {
-            return { background: bg.hex, word: text.name, ink: text.hex, bgLuminance: relativeLuminance(bg.hex) };
+        for (const ink of candidates) {
+          if (contrastRatio(bg.hex, ink.hex) >= MIN_CONTRAST) {
+            return {
+              background: bg.hex,
+              word: bg.name,
+              ink: ink.hex,
+              answer: ink.name,
+              bgLuminance: relativeLuminance(bg.hex)
+            };
           }
         }
       }
@@ -289,12 +308,18 @@
       let best = null;
       let bestRatio = 0;
       for (const bg of COLORS) {
-        for (const text of COLORS) {
-          if (bg.name === text.name) continue;
-          const ratio = contrastRatio(bg.hex, text.hex);
+        for (const ink of COLORS) {
+          if (bg.name === ink.name) continue;
+          const ratio = contrastRatio(bg.hex, ink.hex);
           if (ratio > bestRatio) {
             bestRatio = ratio;
-            best = { background: bg.hex, word: text.name, ink: text.hex, bgLuminance: relativeLuminance(bg.hex) };
+            best = {
+              background: bg.hex,
+              word: bg.name,
+              ink: ink.hex,
+              answer: ink.name,
+              bgLuminance: relativeLuminance(bg.hex)
+            };
           }
         }
       }
@@ -302,7 +327,7 @@
     }
 
     function pairKey(round) {
-      return round.background + '|' + round.word;
+      return round.background + '|' + round.ink;
     }
 
     function generateRounds(count) {
