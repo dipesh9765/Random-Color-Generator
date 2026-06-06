@@ -178,6 +178,7 @@
     <span id="round-label">Round 1 of 20</span>
     <button type="button" class="btn" id="btn-next">Next</button>
     <button type="button" class="btn btn-secondary" id="btn-new-set" title="Shuffle a new set of rounds">New set</button>
+    <button type="button" class="btn btn-secondary" id="btn-download-log" title="Download answer key for the current set">Answer log</button>
   </div>
 
   <script>
@@ -204,9 +205,13 @@
     const btnPrev = document.getElementById('btn-prev');
     const btnNext = document.getElementById('btn-next');
     const btnNewSet = document.getElementById('btn-new-set');
+    const btnDownloadLog = document.getElementById('btn-download-log');
 
     let rounds = [];
     let currentIndex = 0;
+    let setNumber = 0;
+    let currentLogContent = '';
+    let currentLogFilename = '';
     let timerInterval = null;
     let audioContext = null;
 
@@ -352,6 +357,69 @@
       return result;
     }
 
+    function padRound(num) {
+      return String(num).padStart(2, '0');
+    }
+
+    function formatTimestamp(date) {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+
+    function formatAnswerLog(roundsList, setNum, generatedAt) {
+      const lines = [
+        'Color Game - Answer Key',
+        'Set: ' + setNum,
+        'Generated: ' + formatTimestamp(generatedAt),
+        'Rule: Players must shout the FONT color (not the background, not the word).',
+        '',
+        'Round | Background | Word   | Correct Answer',
+        '------|------------|--------|---------------'
+      ];
+
+      roundsList.forEach(function (round, index) {
+        lines.push(
+          padRound(index + 1) +
+          '    | ' +
+          round.word.padEnd(10) +
+          ' | ' +
+          round.word.padEnd(6) +
+          ' | ' +
+          round.answer
+        );
+      });
+
+      lines.push('');
+      lines.push('Quick list: ' + roundsList.map(function (r) { return r.answer; }).join(', '));
+      return lines.join('\n');
+    }
+
+    function downloadTextFile(content, filename) {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function logAnswerSet(roundsList) {
+      setNumber += 1;
+      const generatedAt = new Date();
+      currentLogContent = formatAnswerLog(roundsList, setNumber, generatedAt);
+      currentLogFilename = 'color-game-set-' + String(setNumber).padStart(3, '0') + '-answers.log';
+
+      console.log('[Color Game] Answer key for set ' + setNumber + '\n' + currentLogContent);
+      downloadTextFile(currentLogContent, currentLogFilename);
+    }
+
     function stopTimer() {
       if (timerInterval) {
         clearInterval(timerInterval);
@@ -434,6 +502,7 @@
     function startNewSet() {
       stopTimer();
       rounds = generateRounds(ROUND_COUNT);
+      logAnswerSet(rounds);
       currentIndex = 0;
       showRound(0, false);
     }
@@ -441,6 +510,12 @@
     btnPrev.addEventListener('click', () => { unlockAudio(); goTo(currentIndex - 1); });
     btnNext.addEventListener('click', () => { unlockAudio(); goTo(currentIndex + 1); });
     btnNewSet.addEventListener('click', () => { unlockAudio(); startNewSet(); });
+    btnDownloadLog.addEventListener('click', () => {
+      unlockAudio();
+      if (currentLogContent && currentLogFilename) {
+        downloadTextFile(currentLogContent, currentLogFilename);
+      }
+    });
 
     document.addEventListener('keydown', (e) => {
       unlockAudio();
